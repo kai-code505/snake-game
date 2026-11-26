@@ -1,0 +1,744 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="theme-color" content="#10140f" />
+  <title>贪吃蛇</title>
+  <style>
+    :root {
+      --bg: #10140f;
+      --panel: #1a2218;
+      --ink: #e7f0df;
+      --muted: #8ea088;
+      --line: rgba(231, 240, 223, 0.1);
+      --snake: #b6f25c;
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      margin: 0;
+      min-height: 100%;
+      overscroll-behavior: none;
+      background:
+        radial-gradient(900px 480px at 50% -10%, #243322 0%, transparent 62%),
+        var(--bg);
+      color: var(--ink);
+      font-family: "PingFang SC", "Hiragino Sans GB", "Noto Sans SC", system-ui, sans-serif;
+    }
+
+    body {
+      display: grid;
+      place-items: center;
+      padding: 12px 8px 20px;
+    }
+
+    .game {
+      width: min(600px, 100%);
+      display: grid;
+      gap: 14px;
+    }
+
+    header {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 32px;
+      letter-spacing: 0.08em;
+    }
+
+    .hint {
+      margin: 4px 0 0;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .scores { display: flex; gap: 8px; }
+
+    .score {
+      min-width: 72px;
+      padding: 8px 12px;
+      border-radius: 12px;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      text-align: right;
+    }
+
+    .score span {
+      display: block;
+      color: var(--muted);
+      font-size: 11px;
+      letter-spacing: 0.12em;
+    }
+
+    .score strong {
+      font-size: 22px;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .board-wrap {
+      position: relative;
+      border-radius: 18px;
+      overflow: hidden;
+      background: #141b12;
+      border: 1px solid var(--line);
+      box-shadow: 0 18px 50px rgba(0, 0, 0, 0.35);
+      touch-action: none;
+    }
+
+    canvas {
+      display: block;
+      width: 100%;
+      height: auto;
+      touch-action: none;
+      background: #141b12;
+    }
+
+    .overlay {
+      position: absolute;
+      inset: 0;
+      display: grid;
+      place-items: center;
+      text-align: center;
+      padding: 24px;
+      background: rgba(10, 14, 9, 0.64);
+    }
+
+    .overlay[hidden] { display: none; }
+
+    .card h2 { margin: 0 0 8px; font-size: 28px; }
+    .card p { margin: 0 0 18px; color: var(--muted); }
+
+    .difficulty-picker {
+      display: grid;
+      gap: 8px;
+      margin: 0 0 18px;
+    }
+
+    .difficulty-picker[hidden] { display: none; }
+
+    .difficulty-picker span {
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .difficulty-options {
+      display: flex;
+      justify-content: center;
+      gap: 8px;
+    }
+
+    .difficulty-options button {
+      padding: 8px 12px;
+      background: var(--panel);
+      color: var(--ink);
+      border: 1px solid var(--line);
+      font-size: 13px;
+    }
+
+    .difficulty-options button[aria-pressed="true"] {
+      color: #17210f;
+      background: var(--snake);
+      border-color: var(--snake);
+    }
+
+    button:disabled {
+      cursor: not-allowed;
+      opacity: 0.5;
+    }
+
+    button {
+      appearance: none;
+      border: 0;
+      cursor: pointer;
+      color: #17210f;
+      background: var(--snake);
+      font: inherit;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      padding: 10px 22px;
+      border-radius: 999px;
+    }
+
+    button:active { transform: translateY(1px); }
+
+    button.ghost {
+      background: transparent;
+      color: var(--ink);
+      border: 1px solid var(--line);
+    }
+
+    .actions {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .status {
+      margin: 0;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+  </style>
+</head>
+<body>
+  <main class="game">
+    <header>
+      <div>
+        <h1>贪吃蛇</h1>
+        <p class="hint">按住手指在棋盘上滑动即可连续转向</p>
+      </div>
+      <div class="scores">
+        <div class="score"><span>分数</span><strong id="score">0</strong></div>
+        <div class="score"><span>最高</span><strong id="best">0</strong></div>
+      </div>
+    </header>
+
+    <div class="board-wrap">
+      <canvas id="board" width="600" height="600"></canvas>
+      <div class="overlay" id="overlay">
+        <div class="card">
+          <h2 id="title">开始游戏</h2>
+          <p id="message">请选择难度后开始。玩家撞到对手时会重生并让对手变长；对手撞到玩家时会重生，玩家变长。</p>
+          <div class="difficulty-picker" id="difficulty-picker">
+            <span>选择难度</span>
+            <div class="difficulty-options">
+              <button type="button" data-difficulty="easy" aria-pressed="false">简单</button>
+              <button type="button" data-difficulty="normal" aria-pressed="false">中级</button>
+              <button type="button" data-difficulty="crazy" aria-pressed="false">疯狂</button>
+            </div>
+          </div>
+          <button id="start" type="button" disabled>开始</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="actions">
+      <p class="status" id="status">准备好了</p>
+      <button class="ghost" id="pause" type="button">暂停</button>
+    </div>
+
+  </main>
+
+  <script>
+    const COLS = 21;
+    const ROWS = 21;
+    const canvas = document.getElementById("board");
+    const ctx = canvas.getContext("2d");
+    const scoreEl = document.getElementById("score");
+    const bestEl = document.getElementById("best");
+    const overlay = document.getElementById("overlay");
+    const titleEl = document.getElementById("title");
+    const messageEl = document.getElementById("message");
+    const startBtn = document.getElementById("start");
+    const pauseBtn = document.getElementById("pause");
+    const statusEl = document.getElementById("status");
+    const difficultyPicker = document.getElementById("difficulty-picker");
+    const BEST_KEY = "snake-best";
+
+    const difficulties = {
+      easy: { label: "简单", description: "慢速 · 1 个慢悠悠的对手", initialSpeed: 190, minimumSpeed: 110, acceleration: 2, opponents: 1, opponentMoveEvery: 3, opponentAccuracy: 0.35, attackChance: 0.08 },
+      normal: { label: "中级", description: "标准速度 · 2 个悠闲对手", initialSpeed: 140, minimumSpeed: 68, acceleration: 4, opponents: 2, opponentMoveEvery: 2, opponentAccuracy: 0.55, attackChance: 0.15 },
+      crazy: { label: "疯狂", description: "极速 · 3 个对手", initialSpeed: 90, minimumSpeed: 48, acceleration: 2, opponents: 3, opponentMoveEvery: 1, opponentAccuracy: 0.7, attackChance: 0.25 }
+    };
+    const opponentStarts = [
+      { snake: [{ x: 2, y: 2 }, { x: 1, y: 2 }, { x: 0, y: 2 }], dir: { x: 1, y: 0 }, color: "#72d6ff" },
+      { snake: [{ x: 18, y: 2 }, { x: 19, y: 2 }, { x: 20, y: 2 }], dir: { x: -1, y: 0 }, color: "#ff85b3" },
+      { snake: [{ x: 10, y: 18 }, { x: 10, y: 19 }, { x: 10, y: 20 }], dir: { x: 0, y: -1 }, color: "#c59bff" }
+    ];
+
+    let best = Number(localStorage.getItem(BEST_KEY) || 0);
+    if (!Number.isFinite(best) || best < 0) best = 0;
+    bestEl.textContent = String(best);
+
+    let snake, dir, queue, food, score, growth, mode, lastTime, acc, stepMs, rivals;
+    let selectedDifficulty = null;
+
+    function cell(x, y) {
+      return x + "," + y;
+    }
+
+    function reset() {
+      const mid = (COLS - 1) / 2;
+      snake = [
+        { x: mid, y: mid },
+        { x: mid - 1, y: mid },
+        { x: mid - 2, y: mid }
+      ];
+      dir = { x: 1, y: 0 };
+      queue = [];
+      const settings = difficulties[selectedDifficulty || "normal"];
+      stepMs = settings.initialSpeed;
+      rivals = opponentStarts.slice(0, selectedDifficulty ? settings.opponents : 0).map((opponent) => ({
+        snake: opponent.snake.map((part) => ({ ...part })),
+        dir: { ...opponent.dir },
+        color: opponent.color,
+        growth: 0,
+        moveEvery: settings.opponentMoveEvery,
+        accuracy: settings.opponentAccuracy,
+        attackChance: settings.attackChance,
+        attackTurns: 0,
+        wait: 0,
+        alive: true
+      }));
+      score = 0;
+      growth = 0;
+      scoreEl.textContent = "0";
+      placeFood();
+    }
+
+    function placeFood() {
+      const taken = new Set([
+        ...snake,
+        ...rivals.filter((rival) => rival.alive).flatMap((rival) => rival.snake)
+      ].map((p) => cell(p.x, p.y)));
+      const open = [];
+      for (let y = 0; y < ROWS; y++) {
+        for (let x = 0; x < COLS; x++) {
+          if (!taken.has(cell(x, y))) open.push({ x, y });
+        }
+      }
+      food = open.length ? open[Math.floor(Math.random() * open.length)] : null;
+    }
+
+    function turn(x, y) {
+      if (mode !== "play") return;
+      const last = queue.length ? queue[queue.length - 1] : dir;
+      if (last.x === x && last.y === y) return;
+      if (last.x + x === 0 && last.y + y === 0) return;
+      if (queue.length < 2) queue.push({ x, y });
+    }
+
+    function show(title, message, button) {
+      titleEl.textContent = title;
+      messageEl.textContent = message;
+      startBtn.textContent = button;
+      difficultyPicker.hidden = mode === "pause";
+      startBtn.disabled = !selectedDifficulty && mode !== "pause";
+      overlay.hidden = false;
+    }
+
+    function finish(title, message, status) {
+      mode = "over";
+      statusEl.textContent = status;
+      pauseBtn.textContent = "暂停";
+      show(title, message, "再来一局");
+      draw();
+    }
+
+    function findSafeSpawn(length, occupiedSegments) {
+      const occupied = new Set(occupiedSegments.map((part) => cell(part.x, part.y)));
+      if (food) occupied.add(cell(food.x, food.y));
+      const heads = [];
+      for (let y = 0; y < ROWS; y++) {
+        for (let x = 0; x < COLS; x++) heads.push({ x, y });
+      }
+      const midX = (COLS - 1) / 2;
+      const midY = (ROWS - 1) / 2;
+      heads.sort((a, b) => (Math.abs(a.x - midX) + Math.abs(a.y - midY))
+        - (Math.abs(b.x - midX) + Math.abs(b.y - midY)));
+      const directions = [
+        { x: 1, y: 0 },
+        { x: 0, y: 1 },
+        { x: -1, y: 0 },
+        { x: 0, y: -1 }
+      ];
+
+      for (let size = length; size > 0; size--) {
+        for (const head of heads) {
+          for (const direction of directions) {
+            const parts = Array.from({ length: size }, (_, index) => ({
+              x: head.x - direction.x * index,
+              y: head.y - direction.y * index
+            }));
+            const next = { x: head.x + direction.x, y: head.y + direction.y };
+            const isAvailable = parts.every((part) => part.x >= 0 && part.y >= 0
+              && part.x < COLS && part.y < ROWS && !occupied.has(cell(part.x, part.y)))
+              && next.x >= 0 && next.y >= 0 && next.x < COLS && next.y < ROWS
+              && !occupied.has(cell(next.x, next.y));
+            if (isAvailable) return { snake: parts, dir: direction };
+          }
+        }
+      }
+      return null;
+    }
+
+    function respawnPlayer() {
+      const occupied = rivals.filter((rival) => rival.alive).flatMap((rival) => rival.snake);
+      const spawn = findSafeSpawn(3, occupied);
+      if (!spawn) return false;
+      snake = spawn.snake;
+      dir = spawn.dir;
+      queue = [];
+      growth = 0;
+      return true;
+    }
+
+    function respawnRival(rival) {
+      rival.alive = false;
+      const occupied = [
+        ...snake,
+        ...rivals.filter((other) => other !== rival && other.alive).flatMap((other) => other.snake)
+      ];
+      const spawn = findSafeSpawn(3, occupied);
+      if (!spawn) return false;
+      rival.snake = spawn.snake;
+      rival.dir = spawn.dir;
+      rival.growth = 0;
+      rival.attackTurns = 0;
+      rival.wait = 0;
+      rival.alive = true;
+      return true;
+    }
+
+    function tick() {
+      if (queue.length) dir = queue.shift();
+      const head = { x: snake[0].x + dir.x, y: snake[0].y + dir.y };
+      if (head.x < 0 || head.y < 0 || head.x >= COLS || head.y >= ROWS) {
+        finish("撞到了", "这次吃到 " + score + " 个。再来一局？", "游戏结束");
+        return;
+      }
+
+      const eating = food && head.x === food.x && head.y === food.y;
+      const check = eating || growth > 0 ? snake : snake.slice(0, -1);
+      if (check.some((p) => p.x === head.x && p.y === head.y)) {
+        finish("咬到自己了", "这次吃到 " + score + " 个。再来一局？", "游戏结束");
+        return;
+      }
+      const hitRival = rivals.find((rival) => rival.alive
+        && rival.snake.some((p) => p.x === head.x && p.y === head.y));
+      if (hitRival) {
+        hitRival.growth += snake.length + growth;
+        if (!respawnPlayer()) {
+          finish("没有重生空间", "棋盘上没有足够的空位继续游戏。", "游戏结束");
+          return;
+        }
+        moveRivals();
+        return;
+      }
+
+      snake.unshift(head);
+      if (!eating) {
+        if (growth > 0) growth -= 1;
+        else snake.pop();
+      } else {
+        score += 1;
+        scoreEl.textContent = String(score);
+        if (score > best) {
+          best = score;
+          bestEl.textContent = String(best);
+          localStorage.setItem(BEST_KEY, String(best));
+        }
+        const settings = difficulties[selectedDifficulty];
+        stepMs = Math.max(settings.minimumSpeed, settings.initialSpeed - score * settings.acceleration);
+        if (snake.length === COLS * ROWS) {
+          finish("铺满棋盘", "分数 " + score + "。这局没有空位了。", "通关");
+          return;
+        }
+        placeFood();
+      }
+
+      moveRivals();
+    }
+
+    function start() {
+      if (!selectedDifficulty) return;
+      reset();
+      mode = "play";
+      lastTime = 0;
+      acc = 0;
+      const settings = difficulties[selectedDifficulty];
+      statusEl.textContent = settings.label + (rivals.length ? " · 对手 " + rivals.length : "");
+      pauseBtn.textContent = "暂停";
+      overlay.hidden = true;
+      draw();
+    }
+
+    function moveRivals() {
+      if (!food) return;
+      rivals.forEach((rival) => {
+        if (!rival.alive || mode !== "play") return;
+        rival.wait += 1;
+        if (rival.wait < rival.moveEvery) return;
+        rival.wait = 0;
+        if (rival.attackTurns === 0 && Math.random() < rival.attackChance) {
+          rival.attackTurns = 3;
+        }
+        const attacking = rival.attackTurns > 0;
+        const head = rival.snake[0];
+        const directions = [
+          rival.dir,
+          { x: -rival.dir.y, y: rival.dir.x },
+          { x: rival.dir.y, y: -rival.dir.x }
+        ];
+        const options = directions.map((nextDir) => {
+          const next = { x: head.x + nextDir.x, y: head.y + nextDir.y };
+          const eating = food && next.x === food.x && next.y === food.y;
+          const ownBody = rival.snake.slice(0, eating || rival.growth > 0 ? rival.snake.length : -1);
+          const hitsPlayer = snake.some((part) => part.x === next.x && part.y === next.y);
+          const blocked = next.x < 0 || next.y < 0 || next.x >= COLS || next.y >= ROWS
+            || ownBody.some((part) => part.x === next.x && part.y === next.y)
+            || (!attacking && hitsPlayer)
+            || rivals.some((other) => other !== rival && other.alive
+              && other.snake.some((part) => part.x === next.x && part.y === next.y));
+          return { nextDir, next, eating, hitsPlayer, blocked };
+        }).filter((option) => !option.blocked);
+
+        if (!options.length) {
+          rival.alive = false;
+          return;
+        }
+
+        let choice;
+        if (attacking) {
+          options.sort((a, b) => {
+            const distanceA = Math.abs(a.next.x - snake[0].x) + Math.abs(a.next.y - snake[0].y);
+            const distanceB = Math.abs(b.next.x - snake[0].x) + Math.abs(b.next.y - snake[0].y);
+            return distanceA - distanceB;
+          });
+          choice = options[0];
+        } else if (Math.random() < rival.accuracy) {
+          options.sort((a, b) => {
+            const distanceA = Math.abs(a.next.x - food.x) + Math.abs(a.next.y - food.y);
+            const distanceB = Math.abs(b.next.x - food.x) + Math.abs(b.next.y - food.y);
+            return distanceA - distanceB;
+          });
+          choice = options[0];
+        } else {
+          choice = options[Math.floor(Math.random() * options.length)];
+        }
+        if (choice.hitsPlayer) {
+          growth += rival.snake.length + rival.growth;
+          if (!respawnRival(rival)) {
+            finish("对手无法重生", "棋盘上没有足够的空位让对手继续游戏。", "游戏结束");
+          }
+          return;
+        }
+        rival.dir = choice.nextDir;
+        if (attacking) rival.attackTurns -= 1;
+        rival.snake.unshift(choice.next);
+        if (choice.eating) {
+          placeFood();
+        } else if (rival.growth > 0) {
+          rival.growth -= 1;
+        } else {
+          rival.snake.pop();
+        }
+      });
+      if (mode === "play") {
+        const activeRivals = rivals.filter((rival) => rival.alive).length;
+        statusEl.textContent = difficulties[selectedDifficulty].label
+          + (activeRivals ? " · 对手 " + activeRivals : "");
+      }
+    }
+
+    function togglePause() {
+      if (mode === "play") {
+        mode = "pause";
+        statusEl.textContent = "已暂停";
+        pauseBtn.textContent = "继续";
+        show("暂停", "按空格或点继续。", "继续");
+        return;
+      }
+      if (mode === "pause") {
+        mode = "play";
+        lastTime = 0;
+        statusEl.textContent = "进行中";
+        pauseBtn.textContent = "暂停";
+        overlay.hidden = true;
+      }
+    }
+
+    function roundRect(x, y, w, h, r) {
+      ctx.beginPath();
+      ctx.moveTo(x + r, y);
+      ctx.arcTo(x + w, y, x + w, y + h, r);
+      ctx.arcTo(x + w, y + h, x, y + h, r);
+      ctx.arcTo(x, y + h, x, y, r);
+      ctx.arcTo(x, y, x + w, y, r);
+      ctx.closePath();
+    }
+
+    function draw() {
+      const w = canvas.width;
+      const h = canvas.height;
+      const cw = w / COLS;
+      const ch = h / ROWS;
+      ctx.clearRect(0, 0, w, h);
+
+      ctx.strokeStyle = "rgba(231,240,223,0.05)";
+      for (let i = 1; i < COLS; i++) {
+        ctx.beginPath();
+        ctx.moveTo(i * cw + 0.5, 0);
+        ctx.lineTo(i * cw + 0.5, h);
+        ctx.stroke();
+      }
+      for (let i = 1; i < ROWS; i++) {
+        ctx.beginPath();
+        ctx.moveTo(0, i * ch + 0.5);
+        ctx.lineTo(w, i * ch + 0.5);
+        ctx.stroke();
+      }
+
+      if (food) {
+        const fx = food.x * cw + cw / 2;
+        const fy = food.y * ch + ch / 2;
+        ctx.fillStyle = "#ff6b4a";
+        ctx.beginPath();
+        ctx.arc(fx, fy, cw * 0.28, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = "#6e2616";
+        ctx.fillRect(fx - 1, fy - ch * 0.46, 2, ch * 0.16);
+      }
+
+      rivals.forEach((rival) => {
+        if (!rival.alive) return;
+        rival.snake.forEach((p, i) => {
+          const pad = i === 0 ? 2 : 3.4;
+          roundRect(p.x * cw + pad, p.y * ch + pad, cw - pad * 2, ch - pad * 2, 6);
+          ctx.fillStyle = i === 0 ? rival.color : rival.color + "b8";
+          ctx.fill();
+        });
+      });
+
+      snake.forEach((p, i) => {
+        const pad = i === 0 ? 2 : 3.4;
+        roundRect(p.x * cw + pad, p.y * ch + pad, cw - pad * 2, ch - pad * 2, 6);
+        ctx.fillStyle = i === 0 ? "#d8ff8a" : "#8ed63a";
+        ctx.fill();
+      });
+
+      const head = snake[0];
+      const hx = head.x * cw + cw / 2 + dir.x * cw * 0.12;
+      const hy = head.y * ch + ch / 2 + dir.y * ch * 0.12;
+      const sx = dir.y ? cw * 0.16 : 0;
+      const sy = dir.x ? ch * 0.16 : 0;
+      ctx.fillStyle = "#17210f";
+      ctx.beginPath();
+      ctx.arc(hx - sx, hy - sy, 1.7, 0, Math.PI * 2);
+      ctx.arc(hx + sx, hy + sy, 1.7, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    function frame(now) {
+      if (mode === "play") {
+        if (!lastTime) lastTime = now;
+        acc += now - lastTime;
+        lastTime = now;
+        if (acc > 800) acc = stepMs;
+        while (acc >= stepMs && mode === "play") {
+          acc -= stepMs;
+          tick();
+        }
+        if (mode === "play") draw();
+      }
+      requestAnimationFrame(frame);
+    }
+
+    const keys = {
+      ArrowUp: [0, -1],
+      ArrowDown: [0, 1],
+      ArrowLeft: [-1, 0],
+      ArrowRight: [1, 0],
+      w: [0, -1],
+      a: [-1, 0],
+      s: [0, 1],
+      d: [1, 0],
+      W: [0, -1],
+      A: [-1, 0],
+      S: [0, 1],
+      D: [1, 0]
+    };
+
+    document.querySelectorAll("[data-difficulty]").forEach((button) => {
+      button.addEventListener("click", () => {
+        selectedDifficulty = button.dataset.difficulty;
+        document.querySelectorAll("[data-difficulty]").forEach((option) => {
+          option.setAttribute("aria-pressed", String(option === button));
+        });
+        startBtn.disabled = false;
+        const settings = difficulties[selectedDifficulty];
+        const opponentRule = settings.opponents ? "。玩家撞到对手时会重生并让对手变长；对手撞到玩家时会重生，玩家变长" : "";
+        messageEl.textContent = settings.description + opponentRule + "。选择后点击开始。";
+      });
+    });
+
+    window.addEventListener("keydown", (event) => {
+      if (event.key === " " || event.code === "Space") {
+        event.preventDefault();
+        if (mode === "ready" || mode === "over") start();
+        else togglePause();
+        return;
+      }
+      if (event.key === "Enter" && mode !== "play") {
+        if (mode === "pause") togglePause();
+        else start();
+        return;
+      }
+      const next = keys[event.key];
+      if (!next) return;
+      event.preventDefault();
+      if (mode === "ready") start();
+      turn(next[0], next[1]);
+    });
+
+    startBtn.addEventListener("click", () => {
+      if (mode === "pause") togglePause();
+      else start();
+    });
+
+    pauseBtn.addEventListener("click", () => {
+      if (mode === "play" || mode === "pause") togglePause();
+    });
+
+    function steer(x, y) {
+      if (mode === "pause") return;
+      if (mode !== "play") start();
+      turn(x, y);
+    }
+
+    const boardWrap = document.querySelector(".board-wrap");
+    let swipe = null;
+
+    boardWrap.addEventListener("touchstart", (event) => {
+      if (event.target.closest("button")) return;
+      const touch = event.changedTouches[0];
+      swipe = { x: touch.clientX, y: touch.clientY };
+    }, { passive: true });
+
+    boardWrap.addEventListener("touchmove", (event) => {
+      if (!swipe) return;
+      const touch = event.changedTouches[0];
+      const dx = touch.clientX - swipe.x;
+      const dy = touch.clientY - swipe.y;
+      if (Math.hypot(dx, dy) < 16) return;
+      event.preventDefault();
+      if (Math.abs(dx) > Math.abs(dy)) steer(dx > 0 ? 1 : -1, 0);
+      else steer(0, dy > 0 ? 1 : -1);
+      swipe.x = touch.clientX;
+      swipe.y = touch.clientY;
+    }, { passive: false });
+
+    function endSwipe() {
+      swipe = null;
+    }
+
+    boardWrap.addEventListener("touchend", endSwipe);
+    boardWrap.addEventListener("touchcancel", endSwipe);
+
+    reset();
+    mode = "ready";
+    draw();
+    requestAnimationFrame(frame);
+  </script>
+</body>
+</html>
